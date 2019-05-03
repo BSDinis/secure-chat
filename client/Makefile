@@ -14,7 +14,6 @@ ifneq ($(strip $(DEBUG)), no)
 endif
 
 SOURCES := $(wildcard *.c) $(wildcard ../common/*.c)
-HEADERS := $(wildcard *.h) $(wildcard ../common/*.h)
 OBJECTS := $(SOURCES:.c=.o)
 TARGET  := client_main
 
@@ -23,7 +22,7 @@ all: $(TARGET)      ## compile and copy upstream
 
 -include autodep
 
-$(TARGET): $(OBJECTS) $(HEADERS)  ## compile target
+$(TARGET): $(OBJECTS)  ## compile target
 
 .PHONY: clean
 clean:  ## remove garbage in pwd and in common

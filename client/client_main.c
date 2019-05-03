@@ -1,5 +1,8 @@
 #include <stdio.h>
 
+#include "common/network_wrappers.h"
+#include "common/peer.h"
+
 
 int main(int argc, char **argv)
 {
