@@ -1,3 +1,7 @@
+# extra
+_*
+.*.swp
+
 # Prerequisites
 *.d
 
