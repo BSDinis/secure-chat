@@ -23,7 +23,7 @@
 
 int listen_sock;
 char *server = "127.0.0.1";
-char *port   = "4123";
+int  port   = 3000;
 peer_t connection_list[MAX_CLIENT];
 char read_buffer[1024];
 
@@ -44,7 +44,7 @@ int main(int argc, char **argv)
   if (setup_signals() != 0)
     exit(EXIT_FAILURE);
 
-  if (net_start_listen_socket(server, port, &listen_sock) != 0)
+  if (net_start_listen_socket(server, &port, &listen_sock) != 0)
     exit(EXIT_FAILURE);
 
   /* Set nonblock for stdin. */

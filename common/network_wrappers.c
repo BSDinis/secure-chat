@@ -43,7 +43,7 @@ void net_get_public_ip(struct sockaddr_in *addr)
 
 /* -------------------------------------------------- */
 
-int  net_start_listen_socket(const char *server_addr, char *server_port, int *listen_socket)
+int  net_start_listen_socket(const char *server_addr, int *server_port, int *listen_socket)
 {
   *listen_socket = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (*listen_socket < 0) {
