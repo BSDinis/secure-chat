@@ -111,7 +111,7 @@ int peer_accept(peer_t * peer, int listen_socket)
 
 int peer_recv(peer_t *peer, int (*handler)(peer_t *))
 {
-  int repeats;
+  int repeats = 0;
   peer->recv_buffer_sz = 0;
 
   ssize_t recvd_partial = 0;
@@ -151,7 +151,6 @@ int peer_recv(peer_t *peer, int (*handler)(peer_t *))
 
   if (repeats < MAX_RD_REP) {
     peer->recv_buffer_sz = recvd_total;
-    fprintf(stderr, "going to handler with %s\n", (char *)peer->recv_buffer);
     return handler(peer);
   }
 

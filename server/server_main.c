@@ -140,8 +140,7 @@ void shutdown_properly(int code)
 {
   close(listen_sock);
   for (int i = 0; i < MAX_CLIENT; ++i)
-    if (peer_valid(&connection_list[i]))
-      peer_close(&connection_list[i]);
+    peer_delete(&connection_list[i]);
 
   fputs("Shutdown server properly.\n", stderr);
   exit(code);
@@ -167,6 +166,8 @@ int setup_signals()
 {
   struct sigaction sa;
   sa.sa_handler = handle_signal_action;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_NODEFER;
   if (sigaction(SIGINT, &sa, 0) != 0) {
     perror("sigaction()");
     return -1;
@@ -225,7 +226,7 @@ int handle_read_from_stdin()
 
 int handle_received_message(peer_t * peer)
 {
-  fprintf(stdout, "%s :: %s\n", peer_get_addr(peer), peer->recv_buffer);
+  fprintf(stdout, "%s :: %s", peer_get_addr(peer), peer->recv_buffer);
   return 0;
 }
 

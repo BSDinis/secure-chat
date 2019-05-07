@@ -124,6 +124,8 @@ int setup_signals()
 {
   struct sigaction sa;
   sa.sa_handler = handle_signal_action;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_NODEFER;
   if (sigaction(SIGINT, &sa, 0) != 0) {
     perror("sigaction()");
     return -1;
