@@ -104,7 +104,6 @@ int peer_accept(peer_t * peer, int listen_socket)
     return -1;
   }
 
-  fputs("accepted connection... ", stderr);
   return 0;
 }
 
@@ -150,8 +149,9 @@ int peer_recv(peer_t *peer, int (*handler)(peer_t *))
     }
   } while (recvd_partial > 0 && repeats < MAX_RD_REP);
 
-  if (recvd_partial > 0 && repeats < MAX_RD_REP) {
+  if (repeats < MAX_RD_REP) {
     peer->recv_buffer_sz = recvd_total;
+    fprintf(stderr, "going to handler with %s\n", (char *)peer->recv_buffer);
     return handler(peer);
   }
 

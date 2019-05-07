@@ -128,7 +128,7 @@ int main(int argc, char **argv)
         }
     }
 
-    printf("And we are still waiting for clients' or stdin activity. You can type something to send:\n");
+    printf("Waiting for clients' or stdin activity. Please, type text to send:\n");
   }
 
   return 0;
@@ -190,6 +190,8 @@ int handle_new_connection()
       fputs("Failed to accept connection\n", stderr);
       return -1;
     }
+
+    fprintf(stderr, "Accepted connection on %s\n", peer_get_addr(&connection_list[i]));
 
     return 0;
   }
