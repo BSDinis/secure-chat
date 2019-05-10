@@ -3,9 +3,15 @@
  */
 
 #include "ssl_info.h"
+#include "ssl_util.h"
+#include <stddef.h>
 
 #define print_error(msg) fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, msg)
 
+// no good reason
+#define DEF_BUF_SIZE (128)
+
+/* --------------------------------- */
 static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx);
 
 int ssl_info_server_create (ssl_info_t * info, SSL_CTX *ctx)
@@ -73,4 +79,40 @@ static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx)
 
   return 0;
 }
+
+/* --------------------------------- */
+
+int ssl_info_get_ssl_err(ssl_info_t * info, int ret)
+{
+  return SSL_get_error(info->ssl, ret);
+}
+
+/* --------------------------------- */
+
+int ssl_info_do_ssl_handshake(ssl_info_t * info)
+{
+  int ret = SSL_do_handshake(info->ssl);
+  int err = ssl_info_get_ssl_err(info, ret);
+
+  if (err == SSL_ERROR_WANT_READ) {
+    uint8_t buf[DEF_BUF_SIZE];
+    do {
+      ret = BIO_read(info->out_bio, buf, DEF_BUF_SIZE);
+      if (ret > 0) {
+        fprintf(stderr, "%s:%d Dropping %d bytes because of handshake\n",
+            __FILE__,  __LINE__, ret);
+      }
+      else if (!BIO_should_retry(info->out_bio)) {
+        return -1;
+      }
+    } while (ret > 0);
+  }
+  else if (err != SSL_ERROR_NONE) {
+    ssl_perror("Failed on Handshake");
+  }
+
+  return 0;
+}
+
+/* --------------------------------- */
 
