@@ -107,17 +107,20 @@ int ssl_info_do_ssl_handshake(ssl_info_t * info)
             __FILE__,  __LINE__, ret);
       }
       else if (!BIO_should_retry(info->out_bio)) {
+        ssl_perror("Failed on Handshake");
         return -1;
       }
     } while (ret > 0);
   }
   else if (err != SSL_ERROR_NONE) {
     ssl_perror("Failed on Handshake");
+    return -1;
   }
 
   return 0;
 }
 
+/* --------------------------------- */
 /* --------------------------------- */
 
 int ssl_info_encrypt(ssl_info_t * info,
@@ -169,7 +172,9 @@ int ssl_info_encrypt(ssl_info_t * info,
     }
 
     if (err != SSL_ERROR_NONE && err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
+      free(tmp_buf);
       ssl_perror("Failed to extract encrypted data from BIO, because there was an error");
+      return -1;
     }
 
     if (n == 0) break;
@@ -177,5 +182,79 @@ int ssl_info_encrypt(ssl_info_t * info,
 
   *enc_buf = tmp_buf;
   *enc_sz  = tmp_sz;
+  return 0;
+}
+
+/* --------------------------------- */
+
+int ssl_info_decrypt(ssl_info_t * info,
+    uint8_t *enc_buf, ssize_t enc_sz,
+    uint8_t **clear_buf, ssize_t *clear_sz)
+{
+  *clear_sz  = -1;
+  *clear_buf = NULL;
+
+  ssize_t tmp_cur = 0;
+  ssize_t tmp_sz  = enc_sz;
+  uint8_t *tmp_buf = malloc(tmp_sz * sizeof(uint8_t));
+  if (!tmp_buf) {
+    fprintf(stderr, "%s:%d malloc: %s\n", __FILE__, __LINE__, strerror(errno));
+    return -1;
+  }
+
+  while ( enc_sz > 0) {
+    ssize_t n = BIO_write(info->in_bio, enc_buf, enc_sz);
+
+    if ( n <= 0 )
+      return -1; // BIO write is unrecoverable
+
+    enc_buf += n;
+    enc_sz  -= n;
+
+    if ( !SSL_is_init_finished(info->ssl) ) {
+      if (ssl_info_do_ssl_handshake(info) == -1)
+        return -1;
+      if ( !SSL_is_init_finished(info->ssl) )
+        return  0;
+    }
+
+    // consume data
+    do {
+      n = SSL_read(info->ssl, tmp_buf + tmp_cur, tmp_sz);
+      if (n > 0) {
+        tmp_cur += n;
+        if (tmp_cur == tmp_sz) {
+          tmp_sz *= 2; tmp_buf = realloc(tmp_buf, tmp_sz * sizeof(uint8_t));
+          if (!tmp_buf) { fprintf(stderr, "%s:%d realloc: %s\n", __FILE__, __LINE__, strerror(errno)); return -1; }
+        }
+      }
+    } while (n > 0);
+
+    int err = ssl_info_get_ssl_err(info, n);
+
+    if (err == SSL_ERROR_WANT_READ) {
+      uint8_t buf[DEF_BUF_SIZE];
+      int ret;
+      do {
+        ret = BIO_read(info->out_bio, buf, DEF_BUF_SIZE);
+        if (ret > 0) {
+          fprintf(stderr, "%s:%d Dropping %d bytes because of handshake\n",
+              __FILE__,  __LINE__, ret);
+        }
+        else if (!BIO_should_retry(info->out_bio)) {
+          ssl_perror("Failed on Handshake");
+          return -1;
+        }
+      } while (ret > 0);
+    }
+    else if ( err != SSL_ERROR_WANT_WRITE && err != SSL_ERROR_NONE ) {
+      free(tmp_buf);
+      ssl_perror("Failed to extract encrypted data from BIO, because there was an error");
+      return -1;
+    }
+  }
+
+  *clear_buf = tmp_buf;
+  *clear_sz  = tmp_sz;
   return 0;
 }

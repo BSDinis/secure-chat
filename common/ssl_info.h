@@ -49,3 +49,7 @@ int ssl_info_do_handshake(ssl_info_t * info);
 int ssl_info_encrypt(ssl_info_t * info,
     uint8_t *clear_buf, ssize_t clear_sz,
     uint8_t **enc_buf, ssize_t *enc_sz);
+
+int ssl_info_decrypt(ssl_info_t * info,
+    uint8_t *enc_buf, ssize_t enc_sz,
+    uint8_t **clear_buf, ssize_t *clear_sz);
