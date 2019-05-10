@@ -33,5 +33,8 @@ clean:  ## remove garbage in pwd and in common
 depend : $(SOURCES) ## do the dependencies
 	$(CC) $(INCLUDES) -MM $(SOURCES) > autodep
 
+certs : ## create certificates
+	make -C .. certs
+
 help: ## display options
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
