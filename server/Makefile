@@ -22,6 +22,8 @@ all: $(TARGET)      ## compile and copy upstream
 
 -include autodep
 
+../common/ssl_util.o: ../common/ssl_util.h
+
 $(TARGET): $(OBJECTS)  ## compile target
 
 .PHONY: clean

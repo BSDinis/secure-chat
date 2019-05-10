@@ -15,6 +15,8 @@
 
 #include "common/peer.h"
 #include "common/network_wrappers.h"
+#include "common/ssl_info.h"
+#include "common/ssl_util.h"
 
 #define  MAX_CLIENT  (10)
 #define  SERVER_NAME "server"
