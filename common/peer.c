@@ -169,6 +169,20 @@ int peer_recv(peer_t *peer, int (*handler)(peer_t *))
 
   if (repeats < MAX_RD_REP) {
     peer->recv_buffer_sz = recvd_total;
+    uint8_t *dec_buf = NULL;
+    ssize_t dec_sz = -1;
+
+    if ( ssl_info_decrypt(&peer->info,
+          peer->recv_buffer, peer->recv_buffer_sz,
+          &dec_buf, &dec_sz) == -1 ) {
+      print_error("failed to decrypt whatever was read\n");
+      return -1;
+    }
+
+    ssize_t max_sz = (dec_sz > MAX_MSG_SZ) ? MAX_MSG_SZ : dec_sz;
+    memcpy(peer->recv_buffer, dec_buf, max_sz);
+    free(dec_buf);
+
     return handler(peer);
   }
 
@@ -227,10 +241,22 @@ int peer_prepare_send(peer_t *peer, uint8_t *blob, ssize_t sz)
   }
   memcpy(buff, blob, sz);
 
-
-  if (queue_push(&peer->send_queue, buff, sz) == -1) {
-    print_error("failed to push to the send queue");
+  uint8_t *enc_buff = NULL;
+  ssize_t enc_sz = -1;
+  if ( ssl_info_encrypt(&peer->info,
+        buff, sz,
+        &enc_buff, &enc_sz) == -1 ) {
+    print_error("failed to encrypt buffer");
     free(buff);
+    return -1;
+  }
+
+  free(buff);
+
+
+  if (queue_push(&peer->send_queue, enc_buff, enc_sz) == -1) {
+    print_error("failed to push to the send queue");
+    free(enc_buff);
     return -1;
   }
 
