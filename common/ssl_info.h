@@ -8,6 +8,7 @@
 
 #include <openssl/ssl.h>
 #include <openssl/bio.h>
+#include <stddef>
 
 
 /*
@@ -37,10 +38,12 @@ typedef struct ssl_info_t {
   SSL * ssl;
 } ssl_info_t;
 
+int ssl_info_get_ssl_err(ssl_info_t * info, int ret);
+
 int ssl_info_server_create(ssl_info_t * info, SSL_CTX *ctx);
 int ssl_info_client_create(ssl_info_t * info, SSL_CTX *ctx);
 int ssl_info_destroy(ssl_info_t * info);
 
-int ssl_info_get_ssl_err(ssl_info_t * info, int ret);
-
 int ssl_info_do_handshake(ssl_info_t * info);
+
+int ssl_info_encrypt(ssl_info_t * info, uint8_t *buf, ssize_t sz);
