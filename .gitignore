@@ -14,6 +14,12 @@
 _*
 .*.swp
 
+# Crypto Stuff
+*.crt
+*.csr
+*.pem
+*.key
+
 # Prerequisites
 *.d
 
