@@ -5,6 +5,10 @@
 #include "ssl_info.h"
 #include "ssl_util.h"
 #include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
 
 #define print_error(msg) fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, msg)
 
@@ -116,3 +120,62 @@ int ssl_info_do_ssl_handshake(ssl_info_t * info)
 
 /* --------------------------------- */
 
+int ssl_info_encrypt(ssl_info_t * info,
+    uint8_t *clear_buf, ssize_t clear_sz,
+    uint8_t **enc_buf, ssize_t *enc_sz
+    )
+{
+  if (!SSL_is_init_finished(info->ssl))
+    return 0;
+
+  *enc_sz  = -1;
+  *enc_buf = NULL;
+
+  ssize_t tmp_cur = 0;
+  ssize_t tmp_sz  = clear_sz;
+  uint8_t *tmp_buf = malloc(tmp_sz * sizeof(uint8_t));
+  if (!tmp_buf) {
+    fprintf(stderr, "%s:%d malloc: %s\n", __FILE__, __LINE__, strerror(errno));
+    return -1;
+  }
+
+  while ( clear_sz > 0) {
+    ssize_t n = SSL_write(info->ssl, clear_buf, clear_sz);
+    int err = ssl_info_get_ssl_err(info, n);
+
+    if ( n > 0 ) {
+
+      // adjust clear_buffer
+      if ( n < clear_sz )
+        clear_buf += n;
+      clear_sz  -= n;
+
+      do {
+        // consume from bio and prepare to send
+        n = BIO_read(info->out_bio, tmp_buf + tmp_cur, tmp_sz);
+        if (n > 0) {
+          tmp_cur += n;
+          if (tmp_cur == tmp_sz) {
+            tmp_sz *= 2; tmp_buf = realloc(tmp_buf, tmp_sz * sizeof(uint8_t));
+            if (!tmp_buf) { fprintf(stderr, "%s:%d realloc: %s\n", __FILE__, __LINE__, strerror(errno)); return -1; }
+          }
+        }
+        else if (!BIO_should_retry(info->out_bio)) {
+          free(tmp_buf);
+          ssl_perror("Failed to extract encrypted data from BIO");
+          return -1;
+        }
+      } while (n > 0);
+    }
+
+    if (err != SSL_ERROR_NONE && err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
+      ssl_perror("Failed to extract encrypted data from BIO, because there was an error");
+    }
+
+    if (n == 0) break;
+  }
+
+  *enc_buf = tmp_buf;
+  *enc_sz  = tmp_sz;
+  return 0;
+}
