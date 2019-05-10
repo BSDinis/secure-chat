@@ -20,16 +20,16 @@ static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx);
 
 int ssl_info_server_create (ssl_info_t * info, SSL_CTX *ctx)
 {
-  int ret = ssl_info_create(info, ctx);
+  if (ssl_info_create(info, ctx) == -1) return -1;
   SSL_set_accept_state(info->ssl);
-  return ret;
+  return 0;
 }
 
 int ssl_info_client_create (ssl_info_t * info, SSL_CTX *ctx)
 {
-  int ret = ssl_info_create(info, ctx);
+  if (ssl_info_create(info, ctx) == -1) return -1;
   SSL_set_connect_state(info->ssl);
-  return ret;
+  return 0;
 }
 
 int ssl_info_destroy(ssl_info_t * info)
