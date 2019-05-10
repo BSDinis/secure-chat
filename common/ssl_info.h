@@ -10,13 +10,37 @@
 #include <openssl/bio.h>
 
 
+/*
+ * this is the classical diagram
+ * most sketches miss the socket
+ */
+
+/*                                 BIOs
+ *                                 are
+ *                                 buffers
+ *  SSL_write  +-----+  BIO_write  +---------+  BIO_read  +--------+  send  +---------+
+ * ----------->|     |------------>| out_bio |----------->|        |------->|         |
+ *             |     |             +---------+            |        |        |         |
+ *             | SSL |                                    | socket |        | network |
+ *   SSL_read  |     |  BIO_read   +---------+  BIO_write |        |  recv  |         |
+ * <-----------|     |<------------| in_bio  |<-----------|        |<-------|         |
+ *             +-----+             +---------+            +--------+        +---------+
+ *
+ * SSL  writes in to out_bio and reads from in_bio
+ * socket reads from out_bio and  writes to in_bio
+ */
+
+
 typedef struct ssl_info_t {
-  BIO * in_bio;
-  BIO * out_bio;
+  BIO * in_bio;  // SSL reads from ; socket writes to
+  BIO * out_bio; // SSL writes to  ; socket reads from
   SSL * ssl;
 } ssl_info_t;
 
-int ssl_info_server_create (ssl_info_t * info, SSL_CTX *ctx);
-int ssl_info_client_create (ssl_info_t * info, SSL_CTX *ctx);
+int ssl_info_server_create(ssl_info_t * info, SSL_CTX *ctx);
+int ssl_info_client_create(ssl_info_t * info, SSL_CTX *ctx);
 int ssl_info_destroy(ssl_info_t * info);
 
+int ssl_info_get_ssl_err(ssl_info_t * info, int ret);
+
+int ssl_info_do_handshake(ssl_info_t * info);
