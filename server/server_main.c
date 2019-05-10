@@ -55,7 +55,7 @@ int main(int argc, char **argv)
   fcntl(STDIN_FILENO, F_SETFL, flag);
 
   for (int i = 0; i < MAX_CLIENT; ++i)
-    peer_create(&connection_list[i]);
+    peer_create(&connection_list[i], NULL, true); // FIXME (strawman)
 
   fd_set read_fds;
   fd_set write_fds;

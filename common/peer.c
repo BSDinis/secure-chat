@@ -20,7 +20,7 @@
 
 /* ------------------------------------------------- */
 
-int peer_create(peer_t * peer)
+int peer_create(peer_t * peer, SSL_CTX * ctx, bool server)
 {
   peer->socket = -1;
   memset(&peer->address, 0, sizeof(struct sockaddr_in));
@@ -30,6 +30,19 @@ int peer_create(peer_t * peer)
     return -1;
   }
   peer->recv_buffer_sz = 0;
+
+  if (server) {
+    if (ssl_info_server_create(&peer->info, ctx) == -1) {
+      print_error("failed to create ssl info");
+      queue_delete(&peer->send_queue);
+      return -1;
+    }
+  }
+  else if (ssl_info_client_create(&peer->info, ctx) == -1) {
+    print_error("failed to create ssl info");
+    queue_delete(&peer->send_queue);
+    return -1;
+  }
   return 0;
 }
 
@@ -44,7 +57,12 @@ int peer_delete(peer_t * peer)
   }
 
   if (queue_delete(&peer->send_queue) == -1) {
-    print_error("failed to delete send queue to peer");
+    print_error("failed to delete send queue");
+    ret = -1;
+  }
+
+  if (ssl_info_destroy(&peer->info) == -1) {
+    print_error("failed to delete ssl info");
     ret = -1;
   }
 
