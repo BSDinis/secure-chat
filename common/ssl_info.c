@@ -49,8 +49,10 @@ static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx)
     return -1;
   }
 
-  // returns -1 on no data
+  // set to return -1 on no data
   BIO_set_mem_eof_return(info->in_bio, -1);
+  // set nonblocking
+  BIO_set_nbio(info->in_bio, 1);
 
   // bio
   info->out_bio = BIO_new(BIO_s_mem());
@@ -61,8 +63,10 @@ static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx)
     return -1;
   }
 
-  // returns -1 on no data
+  // set to return -1 on no data
   BIO_set_mem_eof_return(info->out_bio, -1);
+  // set nonblocking
+  BIO_set_nbio(info->out_bio, 1);
 
   // set bios
   SSL_set_bio(info->ssl, info->in_bio, info->out_bio);
