@@ -5,15 +5,6 @@
 #include "ssl_util.h"
 #include <unistd.h>
 
-static void __ssl_perror(const char * file, int lineno, const char * msg)
-{
-  fprintf(stderr, "%s:%d %s\n", file, lineno, msg);
-  ERR_print_errors_fp(stderr);
-}
-
-static inline void ssl_perror(const char *msg)
-{ __ssl_perror(__FILE__, __LINE__, msg); }
-
 static int init_ssl_ctx(SSL_CTX **, const SSL_METHOD *);
 
 int init_client_ssl_ctx(SSL_CTX **ctx_ptr)
