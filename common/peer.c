@@ -196,7 +196,8 @@ int peer_send(peer_t *peer)
   ssize_t buff_sz;
   uint8_t *buff;
 
-  if (queue_pop(&peer->send_queue, &buff, &buff_sz) != 0) {
+  if (queue_pop(&peer->send_queue, &buff, &buff_sz) != 0
+      || buff == NULL || buff_sz <= 0) {
     print_error("failed to pop from the send queue");
     return -1;
   }
@@ -253,6 +254,8 @@ int peer_prepare_send(peer_t *peer, uint8_t *blob, ssize_t sz)
 
   free(buff);
 
+  // fprintf(stderr, "%p: %x...[%ld]\n", enc_buff, *enc_buff, enc_sz);
+  // fprintf(stderr, "%p\n", enc_buff);
 
   if (queue_push(&peer->send_queue, enc_buff, enc_sz) == -1) {
     print_error("failed to push to the send queue");
