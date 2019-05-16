@@ -93,12 +93,13 @@ int ssl_info_get_ssl_err(ssl_info_t * info, int ret)
 
 /* --------------------------------- */
 
-int ssl_info_do_ssl_handshake(ssl_info_t * info)
+int ssl_info_do_handshake(ssl_info_t * info)
 {
+  print_error("doing handshake");
   int ret = SSL_do_handshake(info->ssl);
   int err = ssl_info_get_ssl_err(info, ret);
 
-  if (err == SSL_ERROR_WANT_READ) {
+  if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
     uint8_t buf[DEF_BUF_SIZE];
     do {
       ret = BIO_read(info->out_bio, buf, DEF_BUF_SIZE);
