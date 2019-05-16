@@ -129,8 +129,13 @@ int ssl_info_encrypt(ssl_info_t * info,
     uint8_t **enc_buf, ssize_t *enc_sz
     )
 {
-  if (!SSL_is_init_finished(info->ssl))
-    return 0;
+  if ( !SSL_is_init_finished(info->ssl) ) {
+    if (ssl_info_do_handshake(info) == -1
+        || !SSL_is_init_finished(info->ssl) ) {
+      print_error("ssl init is not yet finished");
+      return  -1;
+    }
+  }
 
   *enc_sz  = -1;
   *enc_buf = NULL;
@@ -213,10 +218,9 @@ int ssl_info_decrypt(ssl_info_t * info,
     enc_sz  -= n;
 
     if ( !SSL_is_init_finished(info->ssl) ) {
-      if (ssl_info_do_ssl_handshake(info) == -1)
-        return -1;
-      if ( !SSL_is_init_finished(info->ssl) )
-        return  0;
+      if (ssl_info_do_handshake(info) == -1
+          || !SSL_is_init_finished(info->ssl) )
+        return  -1;
     }
 
     // consume data
