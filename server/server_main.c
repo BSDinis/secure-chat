@@ -15,19 +15,25 @@
 
 #include "common/peer.h"
 #include "common/network_wrappers.h"
-#include "common/ssl_info.h"
 #include "common/ssl_util.h"
 
 #define  MAX_CLIENT  (10)
 #define  SERVER_NAME "server"
 
+#define print_error(msg) { fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, msg); }
+
 /* ------------------------------------------------------- */
+
+const char cert_file[] = "server.crt";
+const char  key_file[] = "server.key";
 
 int listen_sock;
 char *server = "127.0.0.1";
 int  port   = 3000;
 peer_t connection_list[MAX_CLIENT];
 char read_buffer[1024];
+
+SSL_CTX *server_ctx;
 
 /* ------------------------------------------------------- */
 
@@ -43,11 +49,27 @@ int handle_received_message(peer_t *);
 
 int main(int argc, char **argv)
 {
-  if (setup_signals() != 0)
+  if (setup_signals() != 0) {
+    print_error("failed to setup signals");
     exit(EXIT_FAILURE);
+  }
 
-  if (net_start_listen_socket(server, &port, &listen_sock) != 0)
+  if (init_server_ssl_ctx(&server_ctx) == -1) {
+    print_error("failed to setup server SSL ctx");
     exit(EXIT_FAILURE);
+  }
+
+  if (load_certificates(server_ctx, cert_file, key_file) == -1) {
+    print_error("failed to load certificates");
+    close_ssl_ctx(server_ctx);
+    exit(EXIT_FAILURE);
+  }
+
+  if (net_start_listen_socket(server, &port, &listen_sock) != 0) {
+    print_error("failed to setup the listen socket");
+    close_ssl_ctx(server_ctx);
+    exit(EXIT_FAILURE);
+  }
 
   /* Set nonblock for stdin. */
   int flag = fcntl(STDIN_FILENO, F_GETFL, 0);
@@ -55,7 +77,7 @@ int main(int argc, char **argv)
   fcntl(STDIN_FILENO, F_SETFL, flag);
 
   for (int i = 0; i < MAX_CLIENT; ++i)
-    peer_create(&connection_list[i], NULL, true); // FIXME (strawman)
+    peer_create(&connection_list[i], server_ctx, true); // FIXME (strawman)
 
   fd_set read_fds;
   fd_set write_fds;
@@ -144,6 +166,7 @@ void shutdown_properly(int code)
   for (int i = 0; i < MAX_CLIENT; ++i)
     peer_delete(&connection_list[i]);
 
+  close_ssl_ctx(server_ctx);
   fputs("Shutdown server properly.\n", stderr);
   exit(code);
 }
