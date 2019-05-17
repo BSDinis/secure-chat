@@ -167,26 +167,24 @@ int peer_recv(peer_t *peer, int (*handler)(peer_t *))
     }
   } while (recvd_partial > 0 && repeats < MAX_RD_REP);
 
-  if (repeats < MAX_RD_REP) {
-    peer->recv_buffer_sz = recvd_total;
-    uint8_t *dec_buf = NULL;
-    ssize_t dec_sz = -1;
+  if (repeats >= MAX_RD_REP)
+    return -1;
 
-    if ( ssl_info_decrypt(&peer->info,
-          peer->recv_buffer, peer->recv_buffer_sz,
-          &dec_buf, &dec_sz) == -1 ) {
-      print_error("failed to decrypt whatever was read\n");
-      return -1;
-    }
+  peer->recv_buffer_sz = recvd_total;
 
-    ssize_t max_sz = (dec_sz > MAX_MSG_SZ) ? MAX_MSG_SZ : dec_sz;
-    memcpy(peer->recv_buffer, dec_buf, max_sz);
-    free(dec_buf);
+  if ( ssl_info_decrypt(&peer->info,
+        peer->recv_buffer, peer->recv_buffer_sz) == -1 ) {
 
-    return handler(peer);
+    print_error("failed to decrypt whatever was read\n");
+    return -1;
   }
 
-  return -1;
+  ssize_t max_sz = (peer->info.clear_sz > MAX_MSG_SZ) ? MAX_MSG_SZ : peer->info.clear_sz;
+  memcpy(peer->recv_buffer, peer->info.clear_buf, max_sz);
+  peer->recv_buffer_sz = max_sz;
+
+  return handler(peer);
+
 }
 
 int peer_send(peer_t *peer)
@@ -240,26 +238,20 @@ int peer_prepare_send(peer_t *peer, uint8_t *blob, ssize_t sz)
     perror("malloc");
     return -1;
   }
-  memcpy(buff, blob, sz);
 
-  uint8_t *enc_buff = NULL;
-  ssize_t enc_sz = -1;
+  memcpy(buff, blob, sz);
   if ( ssl_info_encrypt(&peer->info,
-        buff, sz,
-        &enc_buff, &enc_sz) == -1 ) {
+        buff, sz) == -1 ) {
     print_error("failed to encrypt buffer");
     free(buff);
     return -1;
   }
 
-  free(buff);
-
-  // fprintf(stderr, "%p: %x...[%ld]\n", enc_buff, *enc_buff, enc_sz);
-  // fprintf(stderr, "%p\n", enc_buff);
-
-  if (queue_push(&peer->send_queue, enc_buff, enc_sz) == -1) {
+  ssize_t max_sz = (peer->info.encrypt_sz > sz) ? peer->info.encrypt_sz : sz;
+  memcpy(buff, peer->info.encrypt_buf, max_sz);
+  if (queue_push(&peer->send_queue, buff, sz) == -1) {
     print_error("failed to push to the send queue");
-    free(enc_buff);
+    free(buff);
     return -1;
   }
 
