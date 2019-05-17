@@ -12,12 +12,21 @@
 
 #include "common/network_wrappers.h"
 #include "common/peer.h"
+#include "common/ssl_util.h"
 
+#define print_error(msg) { fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, msg); }
+
+/* ------------------------------------------------------- */
+
+const char cert_file[] = "client.crt";
+const char  key_file[] = "client.key";
 
 char *server_addr_str = "127.0.0.1";
 int port   = 3000;
 peer_t server;
 char read_buffer[1024];
+
+SSL_CTX *client_ctx;
 
 /* ------------------------------------------------------- */
 
@@ -32,11 +41,23 @@ int handle_received_message(peer_t *peer);
 
 int main(int argc, char **argv)
 {
-  if (setup_signals() != 0)
+  if (setup_signals() != 0) {
+    print_error("failed to setup signals");
     exit(EXIT_FAILURE);
+  }
 
-  peer_create(&server);
-  // set up addres
+  if (init_client_ssl_ctx(&client_ctx) == -1) {
+    print_error("failed to setup client SSL ctx");
+    exit(EXIT_FAILURE);
+  }
+
+  if (load_certificates(client_ctx, cert_file, key_file) == -1) {
+    print_error("failed to load certificates");
+    exit(EXIT_FAILURE);
+  }
+
+  peer_create(&server, client_ctx, false);
+  // set up address
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
@@ -182,6 +203,7 @@ void shutdown_properly(int code)
 {
   peer_delete(&server);
   fputs("Shutdown client properly.\n", stderr);
+  close_ssl_ctx(client_ctx);
   exit(code);
 }
 
