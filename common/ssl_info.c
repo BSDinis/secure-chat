@@ -17,6 +17,8 @@
 
 /* --------------------------------- */
 static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx);
+static int queue_enc_bytes(ssl_info_t *, const uint8_t *, ssize_t sz);
+static int queue_unenc_bytes(ssl_info_t *info, const uint8_t *buf, ssize_t sz);
 
 int ssl_info_server_create (ssl_info_t * info, SSL_CTX *ctx)
 {
@@ -37,6 +39,11 @@ int ssl_info_destroy(ssl_info_t * info)
   if ( info->ssl ) {
     SSL_free(info->ssl);
     info->ssl = NULL;
+    free(info->clear_buf);
+    free(info->encrypt_buf);
+    info->clear_buf = info->encrypt_buf = NULL;
+    info->clear_cap = info->encrypt_cap = -1;
+    info->clear_sz  = info->encrypt_sz  = -1;
   }
 
   return 0;
@@ -44,10 +51,23 @@ int ssl_info_destroy(ssl_info_t * info)
 
 static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx)
 {
+  if (!(info->clear_buf = malloc(INITIAL_BUFFER_SZ * sizeof(uint8_t)))) {
+    print_error("malloc failed");
+    return -1;
+  }
+
+  if (!(info->encrypt_buf = malloc(INITIAL_BUFFER_SZ * sizeof(uint8_t)))) {
+    free(info->clear_buf);
+    print_error("malloc failed");
+    return -1;
+  }
+
   // ssl
   info->ssl = SSL_new(ctx);
   if ( !info->ssl ) {
     print_error("failed to create a new SSL");
+    free(info->clear_buf);
+    free(info->encrypt_buf);
     return -1;
   }
 
@@ -56,6 +76,8 @@ static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx)
   if ( !info->in_bio ) {
     print_error("failed to create a input BIO");
     SSL_free(info->ssl);
+    free(info->clear_buf);
+    free(info->encrypt_buf);
     return -1;
   }
 
@@ -70,8 +92,13 @@ static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx)
     print_error("failed to create a output BIO");
     BIO_free(info->in_bio);
     SSL_free(info->ssl);
+    free(info->clear_buf);
+    free(info->encrypt_buf);
     return -1;
   }
+
+  info->clear_cap = info->encrypt_cap = INITIAL_BUFFER_SZ;
+  info->clear_sz = info->encrypt_sz = 0;
 
   // set to return -1 on no data
   BIO_set_mem_eof_return(info->out_bio, -1);
@@ -103,10 +130,8 @@ int ssl_info_do_handshake(ssl_info_t * info)
     uint8_t buf[DEF_BUF_SIZE];
     do {
       ret = BIO_read(info->out_bio, buf, DEF_BUF_SIZE);
-      if (ret > 0) {
-        fprintf(stderr, "%s:%d Dropping %d bytes because of handshake\n",
-            __FILE__,  __LINE__, ret);
-      }
+      if (ret > 0)
+        queue_enc_bytes(info, buf, ret);
       else if (!BIO_should_retry(info->out_bio)) {
         ssl_perror("Failed on Handshake");
         return -1;
@@ -125,52 +150,39 @@ int ssl_info_do_handshake(ssl_info_t * info)
 /* --------------------------------- */
 
 int ssl_info_encrypt(ssl_info_t * info,
-    uint8_t *clear_buf, ssize_t clear_sz,
-    uint8_t **enc_buf, ssize_t *enc_sz
+    //uint8_t *clear_buf, ssize_t clear_sz,
+    uint8_t *encrypt_buf, ssize_t encrypt_sz
     )
 {
   if ( !SSL_is_init_finished(info->ssl) ) {
+    return 0;
+#if 0
     if (ssl_info_do_handshake(info) == -1
         || !SSL_is_init_finished(info->ssl) ) {
       print_error("ssl init is not yet finished");
       return  -1;
     }
+#endif
   }
 
-  *enc_sz  = -1;
-  *enc_buf = NULL;
+  uint8_t buf[DEF_BUF_SIZE];
 
-  ssize_t tmp_cur = 0;
-  ssize_t tmp_sz  = clear_sz;
-  uint8_t *tmp_buf = malloc(tmp_sz * sizeof(uint8_t));
-  if (!tmp_buf) {
-    fprintf(stderr, "%s:%d malloc: %s\n", __FILE__, __LINE__, strerror(errno));
-    return -1;
-  }
-
-  while ( clear_sz > 0) {
-    ssize_t n = SSL_write(info->ssl, clear_buf, clear_sz);
+  while ( encrypt_sz > 0) {
+    ssize_t n = SSL_write(info->ssl, encrypt_buf, encrypt_sz);
     int err = ssl_info_get_ssl_err(info, n);
 
     if ( n > 0 ) {
-
-      // adjust clear_buffer
-      if ( n < clear_sz )
-        clear_buf += n;
-      clear_sz  -= n;
+      // adjust buffer
+      if ( n < encrypt_sz )
+        memmove(info->ssl, encrypt_buf + n , encrypt_sz - n);
+      encrypt_sz -= n;
 
       do {
         // consume from bio and prepare to send
-        n = BIO_read(info->out_bio, tmp_buf + tmp_cur, tmp_sz);
-        if (n > 0) {
-          tmp_cur += n;
-          if (tmp_cur == tmp_sz) {
-            tmp_sz *= 2; tmp_buf = realloc(tmp_buf, tmp_sz * sizeof(uint8_t));
-            if (!tmp_buf) { fprintf(stderr, "%s:%d realloc: %s\n", __FILE__, __LINE__, strerror(errno)); return -1; }
-          }
-        }
+        n = BIO_read(info->out_bio, buf, DEF_BUF_SIZE);
+        if (n > 0)
+          queue_enc_bytes(info, buf, n);
         else if (!BIO_should_retry(info->out_bio)) {
-          free(tmp_buf);
           ssl_perror("Failed to extract encrypted data from BIO");
           return -1;
         }
@@ -178,7 +190,6 @@ int ssl_info_encrypt(ssl_info_t * info,
     }
 
     if (err != SSL_ERROR_NONE && err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) {
-      free(tmp_buf);
       ssl_perror("Failed to extract encrypted data from BIO, because there was an error");
       return -1;
     }
@@ -186,65 +197,49 @@ int ssl_info_encrypt(ssl_info_t * info,
     if (n == 0) break;
   }
 
-  *enc_buf = tmp_buf;
-  *enc_sz  = tmp_sz;
   return 0;
 }
 
 /* --------------------------------- */
 
 int ssl_info_decrypt(ssl_info_t * info,
-    uint8_t *enc_buf, ssize_t enc_sz,
-    uint8_t **clear_buf, ssize_t *clear_sz)
+    uint8_t *src, ssize_t sz)
 {
-  *clear_sz  = -1;
-  *clear_buf = NULL;
+  uint8_t buf[DEF_BUF_SIZE];
 
-  ssize_t tmp_cur = 0;
-  ssize_t tmp_sz  = enc_sz;
-  uint8_t *tmp_buf = malloc(tmp_sz * sizeof(uint8_t));
-  if (!tmp_buf) {
-    fprintf(stderr, "%s:%d malloc: %s\n", __FILE__, __LINE__, strerror(errno));
-    return -1;
-  }
-
-  while ( enc_sz > 0) {
-    ssize_t n = BIO_write(info->in_bio, enc_buf, enc_sz);
+  while ( sz > 0) {
+    ssize_t n = BIO_write(info->in_bio, src, sz);
 
     if ( n <= 0 )
       return -1; // BIO write is unrecoverable
 
-    enc_buf += n;
-    enc_sz  -= n;
+    src += n;
+    sz  -= n;
 
     if ( !SSL_is_init_finished(info->ssl) ) {
-      if (ssl_info_do_handshake(info) == -1
-          || !SSL_is_init_finished(info->ssl) )
+      if (ssl_info_do_handshake(info) == -1)
+        return -1;
+
+      if (!SSL_is_init_finished(info->ssl) )
         return  -1;
     }
 
     // consume data
     do {
-      n = SSL_read(info->ssl, tmp_buf + tmp_cur, tmp_sz);
-      if (n > 0) {
-        tmp_cur += n;
-        if (tmp_cur == tmp_sz) {
-          tmp_sz *= 2; tmp_buf = realloc(tmp_buf, tmp_sz * sizeof(uint8_t));
-          if (!tmp_buf) { fprintf(stderr, "%s:%d realloc: %s\n", __FILE__, __LINE__, strerror(errno)); return -1; }
-        }
-      }
+      n = SSL_read(info->ssl, buf, DEF_BUF_SIZE);
+      if (n > 0)
+        queue_unenc_bytes(info, buf, n);
     } while (n > 0);
 
     int err = ssl_info_get_ssl_err(info, n);
 
-    if (err == SSL_ERROR_WANT_READ) {
+    if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
       uint8_t buf[DEF_BUF_SIZE];
       int ret;
       do {
         ret = BIO_read(info->out_bio, buf, DEF_BUF_SIZE);
         if (ret > 0) {
-          fprintf(stderr, "%s:%d Dropping %d bytes because of handshake\n",
-              __FILE__,  __LINE__, ret);
+          queue_enc_bytes(info, buf, ret);
         }
         else if (!BIO_should_retry(info->out_bio)) {
           ssl_perror("Failed on Handshake");
@@ -253,13 +248,60 @@ int ssl_info_decrypt(ssl_info_t * info,
       } while (ret > 0);
     }
     else if ( err != SSL_ERROR_WANT_WRITE && err != SSL_ERROR_NONE ) {
-      free(tmp_buf);
       ssl_perror("Failed to extract encrypted data from BIO, because there was an error");
       return -1;
     }
   }
 
-  *clear_buf = tmp_buf;
-  *clear_sz  = tmp_sz;
   return 0;
+}
+
+/* --------------------------------- */
+/* --------------------------------- */
+/* --------------------------------- */
+/* --------------------------------- */
+/* --------------------------------- */
+/* --------------------------------- */
+
+static int __queue(
+    uint8_t ** buf_ptr,
+    ssize_t * cap_ptr,
+    ssize_t * sz_ptr,
+    const uint8_t *buf, ssize_t sz)
+{
+  if (*sz_ptr >= *cap_ptr) {
+    *cap_ptr *= 2;
+    void * tmp = realloc(*buf_ptr, *cap_ptr);
+    if (!tmp) {
+      print_error("failed to realloc");
+      return -1;
+    }
+    *buf_ptr = tmp;
+  }
+
+  memcpy(*buf_ptr + *sz_ptr, buf, sz);
+  *sz_ptr += sz;
+  return 0;
+}
+
+static int queue_enc_bytes(ssl_info_t *info, const uint8_t *buf, ssize_t sz)
+{
+  return __queue(
+      &info->clear_buf,
+      &info->clear_cap,
+      &info->clear_sz,
+      buf,
+      sz
+      );
+}
+
+static int queue_unenc_bytes(ssl_info_t *info, const uint8_t *buf, ssize_t sz)
+{
+  return __queue(
+      &info->encrypt_buf,
+      &info->encrypt_cap,
+      &info->encrypt_sz,
+      buf,
+      sz
+      );
 }
