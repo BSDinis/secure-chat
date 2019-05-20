@@ -168,7 +168,7 @@ int build_fd_sets(peer_t *server, fd_set *read_fds, fd_set *write_fds, fd_set *e
 
   FD_ZERO(write_fds);
   // there is smth to send, set up write_fd for server socket
-  if (!queue_empty(&server->send_queue))
+  if (peer_has_message_to_send(server))
     FD_SET(server->socket, write_fds);
 
   FD_ZERO(except_fds);
@@ -221,6 +221,14 @@ void shutdown_properly(int code)
 
 int handle_received_message(peer_t *peer)
 {
-  fprintf(stdout, "%s :: %s\n", peer_get_addr(peer), (char *) peer->recv_buffer);
+  const uint8_t *buf;
+  ssize_t sz;
+
+  if (peer_get_buffer(peer, &buf, &sz) == -1 ) {
+    fprintf(stdout, "failed to get buffer from %s", peer_get_addr(peer));
+    return 0;
+  }
+
+  fprintf(stdout, "%s :: %s", peer_get_addr(peer), (char *)buf);
   return 0;
 }
