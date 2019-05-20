@@ -18,7 +18,7 @@
 /* --------------------------------- */
 static int ssl_info_create (ssl_info_t * info, SSL_CTX *ctx);
 static int queue_enc_bytes(ssl_info_t *, const uint8_t *, ssize_t sz);
-static int queue_unenc_bytes(ssl_info_t *info, const uint8_t *buf, ssize_t sz);
+
 
 int ssl_info_server_create (ssl_info_t * info, SSL_CTX *ctx)
 {
@@ -295,7 +295,7 @@ static int queue_enc_bytes(ssl_info_t *info, const uint8_t *buf, ssize_t sz)
       );
 }
 
-static int queue_unenc_bytes(ssl_info_t *info, const uint8_t *buf, ssize_t sz)
+int queue_unenc_bytes(ssl_info_t *info, const uint8_t *buf, ssize_t sz)
 {
   return __queue(
       &info->encrypt_buf,

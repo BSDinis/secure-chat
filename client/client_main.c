@@ -24,7 +24,6 @@ const char  key_file[] = "client.key";
 char *server_addr_str = "127.0.0.1";
 int port   = 3000;
 peer_t server;
-char read_buffer[1024];
 
 SSL_CTX *client_ctx;
 
@@ -183,13 +182,24 @@ int build_fd_sets(peer_t *server, fd_set *read_fds, fd_set *write_fds, fd_set *e
 
 int handle_read_from_stdin(peer_t *server)
 {
+  char read_buffer[1024];
+  memset(read_buffer, 0, 1024);
+
   if (fgets(read_buffer, 1024, stdin) == NULL) {
     fputs("Failed to read from stdin\n", stderr);
     return -1;
   }
 
+  ssize_t len = strlen(read_buffer);
+  for (int i = 0; i < len; printf("%d: %c\n", i, read_buffer[i]), i++);
+  if (read_buffer[len-1] == '\n')
+    read_buffer[len - 1] = 0;  // remove newline
+
+  len &= ((1 << 10) - 1);
+  fprintf(stderr, "read %ld bytes: %s\n", len, read_buffer);
+
   // Create new message and enqueue it.
-  if (peer_prepare_send(server, (uint8_t *)read_buffer, 1024) == -1) {
+  if (peer_prepare_send(server, (uint8_t *)read_buffer, len) == -1) {
     fputs("Failed to prepare the message\n", stderr);
     return -1;
   }

@@ -9,6 +9,7 @@
 #include <openssl/ssl.h>
 #include <openssl/bio.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 
 /*
@@ -63,3 +64,12 @@ int ssl_info_encrypt(ssl_info_t * info,
 
 int ssl_info_decrypt(ssl_info_t * info,
     uint8_t *src, ssize_t sz);
+
+
+static inline bool ssl_info_has_message_to_send(const ssl_info_t * info)
+{ return info->encrypt_sz > 0; }
+
+static inline bool ssl_info_has_message_to_recv(const ssl_info_t * info)
+{ return info->clear_sz > 0; }
+
+int queue_unenc_bytes(ssl_info_t *info, const uint8_t *buf, ssize_t sz);

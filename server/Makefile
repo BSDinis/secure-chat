@@ -29,6 +29,7 @@ $(TARGET): $(OBJECTS)  ## compile target
 .PHONY: clean
 clean:  ## remove garbage in pwd and in common
 	rm -f *.o vgcore* $(TARGET)
+	rm -f ../common/*.o
 
 depend : $(SOURCES) ## do the dependencies
 	$(CC) $(INCLUDES) -MM $(SOURCES) > autodep

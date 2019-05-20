@@ -10,9 +10,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+typedef struct pair_t { uint8_t * buff; ssize_t sz; } pair_t;
+
 typedef struct buffer_queue {
-  uint8_t **buffer;
-  ssize_t *buff_sz;
+  pair_t *arr;
 
   ssize_t head, tail;
   ssize_t size;

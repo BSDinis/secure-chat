@@ -19,17 +19,12 @@ typedef struct peer_t
   int socket;
   struct sockaddr_in address;
 
-  buffer_queue send_queue;
-
-  uint8_t recv_buffer[MAX_MSG_SZ];
-  ssize_t recv_buffer_sz;
-
   ssl_info_t info;
 } peer_t;
 
 static inline bool peer_valid(const peer_t *peer) { return peer->socket != -1; }
-static inline bool peer_has_message_to_send(const peer_t *peer) { return !queue_empty(&peer->send_queue); }
-static inline bool peer_has_message_recv(const peer_t *peer) { return peer->recv_buffer_sz > 0; }
+static inline bool peer_has_message_to_send(const peer_t *peer) { return ssl_info_has_message_to_send(&peer->info); }
+static inline bool peer_has_message_recv(const peer_t *peer) { return ssl_info_has_message_to_recv(&peer->info); }
 
 int peer_create(peer_t *, SSL_CTX * ctx, bool server);
 int peer_delete(peer_t *);
