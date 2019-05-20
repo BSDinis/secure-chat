@@ -31,7 +31,6 @@ int listen_sock;
 char *server = "127.0.0.1";
 int  port   = 3000;
 peer_t connection_list[MAX_CLIENT];
-char read_buffer[1024];
 
 SSL_CTX *server_ctx;
 
@@ -227,15 +226,24 @@ int handle_new_connection()
 
 int handle_read_from_stdin()
 {
+  char read_buffer[1024];
   memset(read_buffer, 0, 1024);
+
   if (fgets(read_buffer, 1024, stdin) == NULL) {
     fputs("Failed to read from stdin\n", stderr);
     return -1;
   }
 
+  ssize_t len = strlen(read_buffer);
+  len &= ((1 << 10) - 1);
+  if (read_buffer[len - 1] == '\n') read_buffer[len - 1] = 0;
+
+
+  fprintf(stderr, "read %ld bytes: %s\n", len, read_buffer);
+
   for (int i = 0; i < MAX_CLIENT; ++i) {
     if (!peer_valid(&connection_list[i])) continue;
-    if (peer_prepare_send(&connection_list[i], (uint8_t *)read_buffer, 1024) == -1) {
+    if (peer_prepare_send(&connection_list[i], (uint8_t *)read_buffer, len) == -1) {
       fputs("Failed to prepare message to send\n", stderr);
       return -1;
     }
