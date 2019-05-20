@@ -8,7 +8,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "buffer_queue.h"
 #include "ssl_info.h"
 #include "ssl_util.h"
 
@@ -35,6 +34,7 @@ int peer_accept(peer_t *, int listen_socket);
 
 int peer_recv(peer_t *, int (*message_handler)(peer_t *));
 int peer_send(peer_t *);
+int peer_get_buffer(peer_t *, const uint8_t **, ssize_t *);
 int peer_prepare_send(peer_t *, uint8_t *blob, ssize_t sz);
 
 const char * peer_get_addr(const peer_t *); // static mem

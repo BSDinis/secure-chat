@@ -200,6 +200,17 @@ int peer_send(peer_t *peer)
   return 0;
 }
 
+int peer_get_buffer(peer_t *peer, const uint8_t **blob, ssize_t * sz)
+{
+  if (peer && peer->info.encrypt_sz > 0) {
+    *blob = peer->info.encrypt_buf;
+    *sz = peer->info.encrypt_sz;
+    return 0;
+  }
+
+  return -1;
+}
+
 int peer_prepare_send(peer_t *peer, uint8_t *blob, ssize_t sz)
 { return queue_unenc_bytes(&peer->info, blob, sz); }
 
