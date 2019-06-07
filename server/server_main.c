@@ -39,11 +39,13 @@ SSL_CTX *server_ctx;
 void shutdown_properly(int code);
 void handle_signal_action(int sig_number);
 int setup_signals();
+
 int build_fd_sets(fd_set *read_fds,
     fd_set *write_fds,
     fd_set *except_fds,
     int listen_sock
     );
+
 int handle_new_connection();
 int handle_read_from_stdin();
 int handle_received_message(peer_t *);
@@ -89,6 +91,12 @@ int main(int argc, char **argv)
   fprintf(stderr, "Waiting for incoming connections.\n");
 
   while (1) {
+    for (int i = 0; i < MAX_CLIENT; i++) {
+      if (peer_valid(&connection_list[i])) {
+        if (peer_want_read(&connection_list[i]))
+          handle_received_message(&connection_list[i]);
+      }
+    }
     int high_sock = build_fd_sets(&read_fds, &write_fds, &except_fds, listen_sock);
     int activity = select(high_sock + 1, &read_fds, &write_fds, &except_fds, NULL);
 
@@ -108,16 +116,14 @@ int main(int argc, char **argv)
           if (handle_read_from_stdin() != 0)
             shutdown_properly(EXIT_FAILURE);
         }
-
-        if (FD_ISSET(listen_sock, &read_fds)) {
-          handle_new_connection();
-        }
-
         if (FD_ISSET(STDIN_FILENO, &except_fds)) {
           fputs("except_fds for stdin.\n", stderr);
           shutdown_properly(EXIT_FAILURE);
         }
 
+        if (FD_ISSET(listen_sock, &read_fds)) {
+          handle_new_connection();
+        }
         if (FD_ISSET(listen_sock, &except_fds)) {
           fputs("exception listen socket fd.\n", stderr);
           shutdown_properly(EXIT_FAILURE);
@@ -126,19 +132,17 @@ int main(int argc, char **argv)
         for (int i = 0; i < MAX_CLIENT; ++i) {
           if (peer_valid(&connection_list[i])) {
             if (FD_ISSET(connection_list[i].socket, &read_fds)) {
-              if (peer_recv(&connection_list[i], &handle_received_message) != 0) {
+              if (peer_recv(&connection_list[i]) != 0) {
                 peer_close(&connection_list[i]);
                 continue;
               }
             }
-
             if (FD_ISSET(connection_list[i].socket, &write_fds)) {
               if (peer_send(&connection_list[i]) != 0) {
                 peer_close(&connection_list[i]);
                 continue;
               }
             }
-
             if (FD_ISSET(connection_list[i].socket, &except_fds)) {
               fputs("Exception client fd.\n", stderr);
               peer_close(&connection_list[i]);
@@ -147,8 +151,6 @@ int main(int argc, char **argv)
           }
         }
     }
-
-    printf("Waiting for clients' or stdin activity. Please, type text to send:\n");
   }
 
   return 0;
@@ -213,7 +215,14 @@ int handle_new_connection()
       return -1;
     }
 
+    if (peer_do_nonblock_handshake(&connection_list[i]) != 0) {
+      fprintf(stderr, "failed to do handshake");
+      return -1;
+    }
+
     fprintf(stderr, "Accepted connection on %s\n", peer_get_addr(&connection_list[i]));
+    peer_show_certificate(stdout, &connection_list[i]);
+    fprintf(stdout, "Client id: %lu\n", peer_get_id(&connection_list[i]));
 
     return 0;
   }
@@ -226,27 +235,17 @@ int handle_new_connection()
 
 int handle_read_from_stdin()
 {
-  char read_buffer[1024];
-  memset(read_buffer, 0, 1024);
+  uint8_t buf[256];
+  ssize_t n = read(STDIN_FILENO, buf, sizeof(buf));
 
-  if (fgets(read_buffer, 1024, stdin) == NULL) {
-    fputs("Failed to read from stdin\n", stderr);
-    return -1;
-  }
-
-  ssize_t len = strlen(read_buffer);
-  len &= ((1 << 10) - 1);
-  if (read_buffer[len - 1] == '\n') read_buffer[len - 1] = 0;
-
-
-  fprintf(stderr, "read %ld bytes: %s\n", len, read_buffer);
-
-  for (int i = 0; i < MAX_CLIENT; ++i) {
-    if (!peer_valid(&connection_list[i])) continue;
-    if (peer_prepare_send(&connection_list[i], (uint8_t *)read_buffer, len) == -1) {
-      fputs("Failed to prepare message to send\n", stderr);
-      return -1;
+  if (n > 0) {
+    for (int i = 0; i < MAX_CLIENT; i++) {
+      if (peer_prepare_message_to_send(&connection_list[i], buf, n) != 0)
+        return -1;
     }
+  }
+  else {
+    return -1;
   }
 
   return 0;
@@ -256,15 +255,8 @@ int handle_read_from_stdin()
 
 int handle_received_message(peer_t * peer)
 {
-  const uint8_t *buf;
-  ssize_t sz;
-
-  if (peer_get_buffer(peer, &buf, &sz) == -1 ) {
-    fprintf(stdout, "failed to get buffer from %s", peer_get_addr(peer));
-    return 0;
-  }
-
-  fprintf(stdout, "%s :: %s", peer_get_addr(peer), (char *)buf);
+  fprintf(stdout, "%lu: %.*s", peer_get_id(peer), (int)peer->process_sz, (char *) peer->process_buf);
+  peer->process_sz = 0;
   return 0;
 }
 
@@ -298,7 +290,7 @@ int build_fd_sets(fd_set *read_fds,
       // max
       high_sock = (high_sock > connection_list[i].socket) ? high_sock : connection_list[i].socket;
 
-      if (peer_has_message_to_send(&connection_list[i]))
+      if (peer_want_write(&connection_list[i]))
         FD_SET(connection_list[i].socket, write_fds);
     }
   }

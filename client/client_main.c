@@ -2,7 +2,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <stdio.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/select.h>
@@ -23,9 +22,9 @@ const char  key_file[] = "client.key";
 
 char *server_addr_str = "127.0.0.1";
 int port   = 3000;
-peer_t server;
 
 SSL_CTX *client_ctx;
+peer_t server;
 
 /* ------------------------------------------------------- */
 
@@ -55,7 +54,13 @@ int main(int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
+  /* Set nonblock for stdin. */
+  int flag = fcntl(STDIN_FILENO, F_GETFL, 0);
+  flag |= O_NONBLOCK;
+  fcntl(STDIN_FILENO, F_SETFL, flag);
+
   peer_create(&server, client_ctx, false);
+
   // set up address
   struct sockaddr_in server_addr;
   memset(&server_addr, 0, sizeof(server_addr));
@@ -63,24 +68,31 @@ int main(int argc, char **argv)
   server_addr.sin_addr.s_addr = inet_addr(server_addr_str);
   server_addr.sin_port = htons(port);
 
-  if (peer_connect(&server, &server_addr) != 0)
+  if (peer_connect(&server, &server_addr) == -1)
     shutdown_properly(EXIT_FAILURE);
 
-  /* Set nonblock for stdin. */
-  int flag = fcntl(STDIN_FILENO, F_GETFL, 0);
-  flag |= O_NONBLOCK;
-  fcntl(STDIN_FILENO, F_SETFL, flag);
+  if (peer_do_nonblock_handshake(&server) == -1)
+    shutdown_properly(EXIT_FAILURE);
+
+  fprintf(stdout, "Connected to server at %s\n", peer_get_addr(&server));
+  peer_show_certificate(stdout, &server);
+  fprintf(stdout, "Server id: %lu\n", peer_get_id(&server));
 
   fd_set read_fds;
   fd_set write_fds;
   fd_set except_fds;
 
-  fputs("Waiting for server message or stdin input. Please, type text to send:\n", stdout);
+  fputs("Waiting for server message or stdin input.\n", stdout);
 
   while (1) {
-    int maxfd = server.socket;
-    build_fd_sets(&server, &read_fds, &write_fds, &except_fds);
-    int activity = select(maxfd + 1, &read_fds, &write_fds, &except_fds, NULL);
+    if (peer_valid(&server)) {
+      if (peer_want_read(&server)) {
+        handle_received_message(&server);
+      }
+    }
+
+    int high_sock = build_fd_sets(&server, &read_fds, &write_fds, &except_fds);
+    int activity = select(high_sock + 1, &read_fds, &write_fds, &except_fds, NULL);
 
     switch (activity) {
       case -1:
@@ -93,32 +105,28 @@ int main(int argc, char **argv)
 
       default:
         if (FD_ISSET(STDIN_FILENO, &read_fds)) {
-          if (handle_read_from_stdin(&server) != 0)
-            shutdown_properly(EXIT_FAILURE);
+          handle_read_from_stdin(&server);
         }
-
         if (FD_ISSET(STDIN_FILENO, &except_fds)) {
           fputs("except_fds for stdin.\n", stderr);
           shutdown_properly(EXIT_FAILURE);
         }
 
-        if (FD_ISSET(server.socket, &read_fds)) {
-          if (peer_recv(&server, &handle_received_message) != 0)
+        if (peer_valid(&server)) {
+          if (FD_ISSET(server.socket, &read_fds)) {
+            if (peer_recv(&server) != 0)
+              shutdown_properly(EXIT_FAILURE);
+          }
+          if (FD_ISSET(server.socket, &write_fds)) {
+            if (peer_send(&server) != 0)
+              shutdown_properly(EXIT_FAILURE);
+          }
+          if (FD_ISSET(server.socket, &except_fds)) {
+            fputs("except_fds for server.\n", stderr);
             shutdown_properly(EXIT_FAILURE);
-        }
-
-        if (FD_ISSET(server.socket, &write_fds)) {
-          if (peer_send(&server) != 0)
-            shutdown_properly(EXIT_FAILURE);
-        }
-
-        if (FD_ISSET(server.socket, &except_fds)) {
-          fputs("except_fds for server.\n", stderr);
-          shutdown_properly(EXIT_FAILURE);
+          }
         }
     }
-
-    printf("And we are still waiting for server or stdin activity. You can type something to send:\n");
   }
 
   return 0;
@@ -162,49 +170,35 @@ int setup_signals()
 
 int build_fd_sets(peer_t *server, fd_set *read_fds, fd_set *write_fds, fd_set *except_fds)
 {
+  int high_sock = server->socket;
   FD_ZERO(read_fds);
   FD_SET(STDIN_FILENO, read_fds);
   FD_SET(server->socket, read_fds);
 
   FD_ZERO(write_fds);
   // there is smth to send, set up write_fd for server socket
-  if (peer_has_message_to_send(server))
+  if (peer_want_write(server))
     FD_SET(server->socket, write_fds);
 
   FD_ZERO(except_fds);
   FD_SET(STDIN_FILENO, except_fds);
   FD_SET(server->socket, except_fds);
 
-  return 0;
+  return high_sock;
 }
 
 /* ------------------------------------------------------- */
 
 int handle_read_from_stdin(peer_t *server)
 {
-  char read_buffer[1024];
+  uint8_t read_buffer[1024];
   memset(read_buffer, 0, 1024);
 
-  if (fgets(read_buffer, 1024, stdin) == NULL) {
-    fputs("Failed to read from stdin\n", stderr);
+  ssize_t len = read(STDIN_FILENO, read_buffer, sizeof(read_buffer));
+  if (len > 0)
+    return peer_prepare_message_to_send(server, read_buffer, len);
+  else
     return -1;
-  }
-
-  ssize_t len = strlen(read_buffer);
-  for (int i = 0; i < len; printf("%d: %c\n", i, read_buffer[i]), i++);
-  if (read_buffer[len-1] == '\n')
-    read_buffer[len - 1] = 0;  // remove newline
-
-  len &= ((1 << 10) - 1);
-  fprintf(stderr, "read %ld bytes: %s\n", len, read_buffer);
-
-  // Create new message and enqueue it.
-  if (peer_prepare_send(server, (uint8_t *)read_buffer, len) == -1) {
-    fputs("Failed to prepare the message\n", stderr);
-    return -1;
-  }
-
-  return 0;
 }
 
 /* ------------------------------------------------------- */
@@ -221,14 +215,9 @@ void shutdown_properly(int code)
 
 int handle_received_message(peer_t *peer)
 {
-  const uint8_t *buf;
-  ssize_t sz;
-
-  if (peer_get_buffer(peer, &buf, &sz) == -1 ) {
-    fprintf(stdout, "failed to get buffer from %s", peer_get_addr(peer));
-    return 0;
-  }
-
-  fprintf(stdout, "%s :: %s", peer_get_addr(peer), (char *)buf);
+  fprintf(stdout, "%lu: %.*s", peer_get_id(peer), (int)peer->process_sz, (char *) peer->process_buf);
+  peer->process_sz = 0;
   return 0;
 }
+
+

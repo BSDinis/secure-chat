@@ -12,7 +12,7 @@
 
 # extra
 _*
-.*.swp
+.*
 
 # Crypto Stuff
 *.crt

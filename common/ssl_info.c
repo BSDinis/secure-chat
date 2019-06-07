@@ -122,21 +122,22 @@ int ssl_info_get_ssl_err(ssl_info_t * info, int ret)
 
 int ssl_info_do_handshake(ssl_info_t * info)
 {
-  print_error("doing handshake");
+  fprintf(stderr, "====ssl_do_handshake\n");
   int ret = SSL_do_handshake(info->ssl);
   int err = ssl_info_get_ssl_err(info, ret);
 
+  int n = 0;
   if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
     uint8_t buf[DEF_BUF_SIZE];
     do {
-      ret = BIO_read(info->out_bio, buf, DEF_BUF_SIZE);
-      if (ret > 0)
+      n = BIO_read(info->out_bio, buf, DEF_BUF_SIZE);
+      if (n > 0)
         queue_enc_bytes(info, buf, ret);
       else if (!BIO_should_retry(info->out_bio)) {
         ssl_perror("Failed on Handshake");
         return -1;
       }
-    } while (ret > 0);
+    } while (n > 0);
   }
   else if (err != SSL_ERROR_NONE) {
     ssl_perror("Failed on Handshake");
@@ -154,16 +155,8 @@ int ssl_info_encrypt(ssl_info_t * info,
     uint8_t *encrypt_buf, ssize_t encrypt_sz
     )
 {
-  if ( !SSL_is_init_finished(info->ssl) ) {
+  if ( !SSL_is_init_finished(info->ssl) )
     return 0;
-#if 0
-    if (ssl_info_do_handshake(info) == -1
-        || !SSL_is_init_finished(info->ssl) ) {
-      print_error("ssl init is not yet finished");
-      return  -1;
-    }
-#endif
-  }
 
   uint8_t buf[DEF_BUF_SIZE];
 
@@ -205,6 +198,7 @@ int ssl_info_encrypt(ssl_info_t * info,
 int ssl_info_decrypt(ssl_info_t * info,
     uint8_t *src, ssize_t sz)
 {
+  fprintf(stderr, "===ssl_info_decrypt\n");
   uint8_t buf[DEF_BUF_SIZE];
 
   while ( sz > 0) {
@@ -221,7 +215,7 @@ int ssl_info_decrypt(ssl_info_t * info,
         return -1;
 
       if (!SSL_is_init_finished(info->ssl) )
-        return  -1;
+        return  0;
     }
 
     // consume data
