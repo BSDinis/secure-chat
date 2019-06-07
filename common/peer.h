@@ -1,41 +1,62 @@
-/***
- * peer.h
+/*
+ * peer_type.h
+ *
+ * definition of the peer type
  */
-
 #pragma once
 
-#include <arpa/inet.h>
 #include <stdbool.h>
-#include <stddef.h>
-
-#include "buffer_queue.h"
-
-#define MAX_MSG_SZ (1 << 11)
 
 typedef struct peer_t
 {
   int socket;
   struct sockaddr_in address;
+  SSL *ssl;
 
-  buffer_queue send_queue;
+  BIO *rbio; // SSL reads from, we write to
+  BIO *wbio; // SSL writes to, we read from
 
-  uint8_t recv_buffer[MAX_MSG_SZ];
-  ssize_t recv_buffer_sz;
+  // waiting to be written to socket;
+  uint8_t *write_buf;
+  ssize_t  write_sz;
+  ssize_t write_cap;
+
+  // waiting to be processed
+  uint8_t *process_buf;
+  ssize_t  process_sz;
+  ssize_t process_cap;
+
+  // to allow for reset
+  bool server;
+  SSL_CTX * ctx;
 } peer_t;
 
-static inline bool peer_valid(const peer_t *peer) { return peer->socket != -1; }
-static inline bool peer_has_message_to_send(const peer_t *peer) { return !queue_empty(&peer->send_queue); }
-static inline bool peer_has_message_recv(const peer_t *peer) { return peer->recv_buffer_sz > 0; }
+// type funcs
+int peer_create(peer_t * const, SSL_CTX *, bool server);
+int peer_delete(peer_t * const);
 
-int peer_create(peer_t *);
-int peer_delete(peer_t *);
+// connect funcs
+int peer_close(peer_t * const);
+int peer_connect(peer_t * const, struct sockaddr_in *addr);
+int peer_accept(peer_t * const, int listen_socket);
 
-int peer_close(peer_t *);
-int peer_connect(peer_t *, struct sockaddr_in *addr);
-int peer_accept(peer_t *, int listen_socket);
+// bool funcs
+bool peer_valid(const peer_t * const);
+bool peer_want_write(peer_t *peer);
+bool peer_want_read(peer_t *peer);
 
-int peer_recv(peer_t *, int (*message_handler)(peer_t *));
-int peer_send(peer_t *);
-int peer_prepare_send(peer_t *, uint8_t *blob, ssize_t sz);
+// io funcs
+bool peer_finished_handshake(const peer_t *peer);
+int peer_do_handshake(peer_t *peer);
+int peer_do_nonblock_handshake(peer_t *peer);
+int peer_recv(peer_t *peer);
+int peer_send(peer_t *peer);
+int peer_prepare_message_to_send(peer_t *peer, const uint8_t * buf, ssize_t sz);
 
-const char * peer_get_addr(const peer_t *); // static mem
+// crypto funcs
+EVP_PKEY *peer_get_pubkey(const peer_t * const);
+void      peer_show_certificate(FILE *stream, const peer_t * const);
+uint64_t  peer_get_id(const peer_t * const);
+
+// getter
+const char * peer_get_addr(const peer_t * const); // static mem
