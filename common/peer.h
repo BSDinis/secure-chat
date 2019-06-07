@@ -6,9 +6,6 @@
 #pragma once
 
 #include <stdbool.h>
-#include <openssl/bio.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 
 typedef struct peer_t
 {
