@@ -9,9 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common/network_wrappers.h"
-#include "common/peer.h"
-#include "common/ssl_util.h"
+#include "network_wrappers.h"
+#include "peer.h"
+#include "ssl_util.h"
 
 #define print_error(msg) { fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, msg); }
 
@@ -71,12 +71,10 @@ int main(int argc, char **argv)
   if (peer_connect(&server, &server_addr) == -1)
     shutdown_properly(EXIT_FAILURE);
 
-  if (peer_do_nonblock_handshake(&server) == -1)
+  if (peer_do_handshake(&server) == -1)
     shutdown_properly(EXIT_FAILURE);
 
   fprintf(stdout, "Connected to server at %s\n", peer_get_addr(&server));
-  peer_show_certificate(stdout, &server);
-  fprintf(stdout, "Server id: %lu\n", peer_get_id(&server));
 
   fd_set read_fds;
   fd_set write_fds;

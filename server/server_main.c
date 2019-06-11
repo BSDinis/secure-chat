@@ -13,9 +13,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#include "common/peer.h"
-#include "common/network_wrappers.h"
-#include "common/ssl_util.h"
+#include "peer.h"
+#include "network_wrappers.h"
+#include "ssl_util.h"
 
 #define  MAX_CLIENT  (10)
 #define  SERVER_NAME "server"
@@ -215,14 +215,12 @@ int handle_new_connection()
       return -1;
     }
 
-    if (peer_do_nonblock_handshake(&connection_list[i]) != 0) {
-      fprintf(stderr, "failed to do handshake");
+    if (peer_do_handshake(&connection_list[i]) != 0) {
+      fputs("Failed to do the handshake\n", stderr);
       return -1;
     }
 
     fprintf(stderr, "Accepted connection on %s\n", peer_get_addr(&connection_list[i]));
-    peer_show_certificate(stdout, &connection_list[i]);
-    fprintf(stdout, "Client id: %lu\n", peer_get_id(&connection_list[i]));
 
     return 0;
   }

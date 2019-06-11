@@ -1,9 +1,9 @@
 CC := gcc
-INCLUDE := -I.. -I.
-VPATH   := .:..
+INCLUDE := -I../peer -I.
+VPATH   := .:../peer
 CFLAGS  := -Wall -Werror -fdiagnostics-color=always $(INCLUDE)
-LDFLAGS := -L $(INCLUDE) -Wall -Werror -Wextra -fdiagnostics-color=always
-LDLIBS  := -lssl -lcrypto
+LDFLAGS := -L $(INCLUDE) -L../peer -Wall -Werror -Wextra -fdiagnostics-color=always
+LDLIBS  := -lpeer -lssl -lcrypto
 
 ifeq ($(strip $(OPTIM)), yes)
   CFLAGS += -O2
@@ -13,7 +13,7 @@ ifneq ($(strip $(DEBUG)), no)
   CFLAGS += -g
 endif
 
-SOURCES := $(wildcard *.c) $(wildcard ../common/*.c)
+SOURCES := $(wildcard *.c)
 OBJECTS := $(SOURCES:.c=.o)
 TARGET  := server_main
 
@@ -22,17 +22,14 @@ all: $(TARGET)      ## compile and copy upstream
 
 -include autodep
 
-../common/ssl_util.o: ../common/ssl_util.h
-
 $(TARGET): $(OBJECTS)  ## compile target
 
 .PHONY: clean
 clean:  ## remove garbage in pwd and in common
 	rm -f *.o vgcore* $(TARGET)
-	rm -f ../common/*.o
 
 depend : $(SOURCES) ## do the dependencies
-	$(CC) $(INCLUDES) -MM $(SOURCES) > autodep
+	$(CC) $(INCLUDE) -MM $(SOURCES) > autodep
 
 certs : ## create certificates
 	make -C .. certs

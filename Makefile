@@ -22,3 +22,4 @@ certs:
 	rm -f client.csr
 	cp server.crt server.key server
 	cp client.crt client.key client
+	cp server.crt server.key client.crt client.key src
